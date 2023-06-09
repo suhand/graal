@@ -80,8 +80,4 @@ public interface NodeGeneratorPlugs {
         return GeneratorUtils.createTransferToInterpreterAndInvalidate();
     }
 
-    default String overrideParameterName(String original) {
-        return original;
-    }
-
 }
