@@ -38,11 +38,11 @@ import com.oracle.svm.core.util.ExitStatus;
 import com.oracle.svm.driver.NativeImage.NativeImageError;
 
 class MemoryUtil {
-    private static final long KiB_TO_BYTES = 1024;
-    private static final long MiB_TO_BYTES = 1024 * KiB_TO_BYTES;
+    private static final long KiB_TO_BYTES = 1024L;
+    private static final long MiB_TO_BYTES = 1024L * KiB_TO_BYTES;
 
     /* Builder needs at least 512MiB for building a helloworld in a reasonable amount of time. */
-    private static final long MIN_HEAP_BYTES = 512 * MiB_TO_BYTES;
+    private static final long MIN_HEAP_BYTES = 512L * MiB_TO_BYTES;
 
     /*
      * Builder uses at most 32GB to avoid disabling compressed oops (UseCompressedOops).
@@ -50,8 +50,11 @@ class MemoryUtil {
      */
     private static final long MAX_HEAP_BYTES = 32_000_000_000L;
 
-    /* Use 80% of total system memory in case available memory cannot be determined. */
-    private static final double FALLBACK_TOTAL_MEMORY_RATIO = 0.8;
+    /* Use 80% of the memory limit in containerized environments. */
+    private static final double MAX_ALLOWED_CONTAINER_MEMORY_RATIO = 0.8D;
+
+    /* Use at most 80% of total system memory as a fallback. */
+    private static final double FALLBACK_TOTAL_MEMORY_RATIO = 0.8D;
 
     public static List<String> determineMemoryFlags() {
         return List.of(
@@ -81,18 +84,15 @@ class MemoryUtil {
     private static double determineReasonableMaxRAMPercentage() {
         var osBean = (com.sun.management.OperatingSystemMXBean) ManagementFactory.getOperatingSystemMXBean();
         long totalMemorySize = osBean.getTotalMemorySize();
-        long reasonableMaxMemorySize = -1;
-        reasonableMaxMemorySize = switch (OS.getCurrent()) {
-            case LINUX -> getAvailableMemorySizeLinux();
+        long reasonableMaxMemorySize = switch (OS.getCurrent()) {
+            case LINUX -> findReasonableMemorySizeLinux();
             case DARWIN -> getAvailableMemorySizeDarwin();
             case WINDOWS -> getAvailableMemorySizeWindows();
         };
-        if (reasonableMaxMemorySize < 0 || reasonableMaxMemorySize > totalMemorySize) {
+        if (reasonableMaxMemorySize < 0) {
             /*
              * The amount of available memory was not at all or incorrectly detected. Fall back to a
-             * value based on total memory. OperatingSystemMXBean.getTotalMemorySize() is
-             * container-aware whereas, for example, /proc/meminfo is not and thus may report
-             * available memory of the host which can exceed the memory limit of a container.
+             * value based on total memory.
              */
             reasonableMaxMemorySize = (long) (totalMemorySize * FALLBACK_TOTAL_MEMORY_RATIO);
         }
@@ -102,20 +102,31 @@ class MemoryUtil {
                                             .formatted(reasonableMaxMemorySize / MiB_TO_BYTES, MIN_HEAP_BYTES / MiB_TO_BYTES),
                             null, ExitStatus.OUT_OF_MEMORY.getValue());
         }
-        reasonableMaxMemorySize = Math.min(reasonableMaxMemorySize, MAX_HEAP_BYTES);
+
+        /* Ensure max memory size neither exceeds total memory nor upper limit. */
+        long maxAllowedMemorySize = Math.min(totalMemorySize, MAX_HEAP_BYTES);
+        reasonableMaxMemorySize = Math.min(reasonableMaxMemorySize, maxAllowedMemorySize);
+
         return (double) reasonableMaxMemorySize / totalMemorySize * 100;
     }
 
     /**
-     * Returns the total amount of available memory in bytes on Linux based on
-     * <code>/proc/meminfo</code>, otherwise <code>-1</code>. Note that this metric is not
-     * container-aware (does not take cgroups into account) and may report available memory of the
-     * host.
+     * Returns a reasonable amount of memory in bytes on Linux based on cgroup metrics or
+     * <code>/proc/meminfo</code> that can be used by the build process, otherwise <code>-1</code>.
      *
      * @see <a href=
      *      "https://github.com/torvalds/linux/blob/865fdb08197e657c59e74a35fa32362b12397f58/mm/page_alloc.c#L5137">page_alloc.c#L5137</a>
      */
-    private static long getAvailableMemorySizeLinux() {
+    private static long findReasonableMemorySizeLinux() {
+        var containerMetrics = jdk.internal.platform.Container.metrics();
+        if (containerMetrics != null) {
+            long memoryLimit = containerMetrics.getMemoryLimit();
+            if (memoryLimit >= 0) {
+                /* In containerized environments, use a fixed percentage of the memory limit. */
+                return (long) (memoryLimit * MAX_ALLOWED_CONTAINER_MEMORY_RATIO);
+            }
+        }
+
         try {
             String memAvailableLine = Files.readAllLines(Paths.get("/proc/meminfo")).stream().filter(l -> l.startsWith("MemAvailable")).findFirst().orElse("");
             Matcher m = Pattern.compile("^MemAvailable:\\s+(\\d+) kB").matcher(memAvailableLine);
