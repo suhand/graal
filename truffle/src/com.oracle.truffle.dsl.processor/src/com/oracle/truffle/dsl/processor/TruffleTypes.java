@@ -123,6 +123,7 @@ public class TruffleTypes {
     public static final String FrameSlotKind_Name = "com.oracle.truffle.api.frame.FrameSlotKind";
     public static final String FinalBitSet_Name = "com.oracle.truffle.api.utilities.FinalBitSet";
     public static final String HostCompilerDirectives_Name = "com.oracle.truffle.api.HostCompilerDirectives";
+    public static final String HostCompilerDirectives_BytecodeInterpreterSwitch_Name = "com.oracle.truffle.api.HostCompilerDirectives.BytecodeInterpreterSwitch";
 
     public static final String InternalResource_Id_Name = "com.oracle.truffle.api.InternalResource.Id";
     public static final String InvalidAssumptionException_Name = "com.oracle.truffle.api.nodes.InvalidAssumptionException";
@@ -174,6 +175,7 @@ public class TruffleTypes {
     public final DeclaredType FrameSlotKind = c.getDeclaredType(FrameSlotKind_Name);
     public final DeclaredType FinalBitSet = c.getDeclaredType(FinalBitSet_Name);
     public final DeclaredType HostCompilerDirectives = c.getDeclaredType(HostCompilerDirectives_Name);
+    public final DeclaredType HostCompilerDirectives_BytecodeInterpreterSwitch = c.getDeclaredType(HostCompilerDirectives_BytecodeInterpreterSwitch_Name);
     public final DeclaredType InternalResource_Id = c.getDeclaredType(InternalResource_Id_Name);
     public final DeclaredType InvalidAssumptionException = c.getDeclaredType(InvalidAssumptionException_Name);
     public final DeclaredType LoopNode = c.getDeclaredType(LoopNode_Name);
